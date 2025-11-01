@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Stickman Fight — Simple P2P</title>
+<style>
+  :root{--bg:#040507;--blue:#4ea8ff;--red:#ff6b6b;--muted:#9aa0a6}
+  html,body{height:100%;margin:0;background:linear-gradient(180deg,#020203,#07080a);font-family:Inter,system-ui,Segoe UI,Roboto,Arial;color:var(--muted);-webkit-user-select:none;user-select:none}
+  .wrap{max-width:1100px;margin:0 auto;padding:12px}
+  header{display:flex;justify-content:space-between;align-items:center;padding:8px 0}
+  .bar{width:220px;height:12px;background:rgba(255,255,255,0.04);border-radius:9px;overflow:hidden}
+  .hp{height:100%;transition:width 140ms linear}
+  .hp.p1{background:linear-gradient(90deg,var(--blue),#3ea0ff)}
+  .hp.p2{background:linear-gradient(90deg,#ff9a9a,var(--red))}
+  #timer{font-weight:700;color:#fff}
+  #info{font-size:13px;text-align:center;margin:6px 0;color:var(--muted)}
+  canvas{display:block;width:100%;max-width:100%;height:auto;border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,0.6)}
+  .controls-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  .btn{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.03);color:#eaf6f1;padding:8px 12px;border-radius:10px;font-weight:700}
+  .btn.primary{background:linear-gradient(90deg,var(--blue),#3ea0ff);color:#04110a;border:0}
+  .small{font-size:13px;padding:6px 8px}
+  input[type="text"]{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:#071018;color:#fff}
+  .status{font-weight:700}
+  .hint{font-size:12px;color:#9aa0a6;margin-top:6px}
+  /* touch pads */
+  .touchPads{position:fixed;left:0;right:0;bottom:8px;display:flex;justify-content:space-between;padding:8px;pointer-events:none;gap:6px}
+  .padHalf{width:50%;display:flex;justify-content:center;pointer-events:auto;padding:6px;box-sizing:border-box}
+  .pad{display:flex;flex-direction:column;gap:10px;align-items:center}
+  .pad .row{display:flex;gap:8px}
+  .padBtn{min-width:56px;height:56px;border-radius:12px;background:rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;font-weight:700;color:#eaf6f1;touch-action:none}
+  body:not([data-touch]) .touchPads{display:none}
+  @media(min-width:900px){ body:not([data-touch]) .touchPads{display:none} }
+  /* orientation overlay */
+  #orientOverlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(0,0,0,0.6),rgba(0,0,0,0.85));color:#fff;font-size:18px;z-index:60;padding:24px;text-align:center}
+  .footerNote{font-size:12px;color:var(--muted);margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="bar"><div id="hpLocal" class="hp p1" style="width:100%"></div></div>
+    <div style="text-align:center">Timer: <span id="timer">99</span></div>
+    <div class="bar"><div id="hpRemote" class="hp p2" style="width:100%"></div></div>
+  </header>
+
+  <div id="info">Open on two devices. One creates game, other joins with 4-digit code. Rotate to landscape for best play.</div>
+
+  <canvas id="game" width="1000" height="560"></canvas>
+
+  <div class="controls-row" id="topControls">
+    <div style="display:flex;gap:8px;align-items:center">
+      <button id="createBtn" class="btn primary">Create Game</button>
+      <div style="display:flex;flex-direction:column">
+        <div style="font-size:12px;color:var(--muted)">Room code</div>
+        <div style="font-weight:800;color:#fff;font-size:20px" id="roomCode">----</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="joinCode" type="text" maxlength="4" placeholder="Enter 4-digit code" style="width:120px" />
+      <button id="joinBtn" class="btn">Join Game</button>
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:center">
+      <div>Status: <span id="status" class="status">idle</span></div>
+      <button id="roleLeft" class="btn small">I control Player 1 (Blue)</button>
+      <button id="roleRight" class="btn small">I control Player 2 (Red)</button>
+      <button id="restart" class="btn small">Restart</button>
+    </div>
+  </div>
+
+  <div class="footerNote">Serve this file via a web server (Live Server / http-server). If Create fails, check console (Ctrl+Shift+I) — I included clear status messages.</div>
+</div>
+
+<div class="touchPads" aria-hidden="true">
+  <div class="padHalf" style="justify-content:flex-start">
+    <div class="pad" id="padLocal">
+      <div class="row"><div class="padBtn" data-act="left">◀</div><div class="padBtn" data-act="right">▶</div></div>
+      <div class="row"><div class="padBtn" data-act="jump">Jump</div></div>
+      <div class="row"><div class="padBtn" data-act="atk">Punch</div></div>
+    </div>
+  </div>
+  <div class="padHalf" style="justify-content:flex-end">
+    <div class="pad" id="padRemote" style="visibility:hidden"></div>
+  </div>
+</div>
+
+<div id="orientOverlay">Please rotate your phone to <strong>landscape</strong> for best play.</div>
+
+<!-- PeerJS -->
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+<script>
+/* Simple P2P stickman — single-file
+   - Uses PeerJS public PeerServer for simple signaling
+   - 4-digit code join: peer id = stick-<code>
+   - Local audio via WebAudio for hit sound
+*/
+
+/* ---------- Setup & UI ---------- */
+const createBtn = document.getElementById('createBtn');
+const roomCodeEl = document.getElementById('roomCode');
+const joinInput = document.getElementById('joinCode');
+const joinBtn = document.getElementById('joinBtn');
+const statusEl = document.getElementById('status');
+const roleLeft = document.getElementById('roleLeft');
+const roleRight = document.getElementById('roleRight');
+const restartBtn = document.getElementById('restart');
+
+const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+if(isTouch) document.body.setAttribute('data-touch', '1');
+function checkOrient(){
+  const overlay = document.getElementById('orientOverlay');
+  if(!isTouch){ overlay.style.display = 'none'; return; }
+  overlay.style.display = (window.innerHeight > window.innerWidth) ? 'flex' : 'none';
+}
+window.addEventListener('resize', checkOrient); checkOrient();
+
+function setStatus(s){ statusEl.textContent = s; console.log('[status]', s); }
+
+/* ---------- Peer / Connection ---------- */
+let peer = null, conn = null, isHost = false, connected = false;
+let localPlayerIndex = 0; // 0 = blue (left), 1 = red (right)
+
+// generate 4-digit code
+function genCode(){ return Math.floor(1000 + Math.random()*9000).toString(); }
+
+// Create game (host)
+createBtn.addEventListener('click', () => {
+  createBtn.disabled = true;
+  try {
+    if(peer){ try{ peer.destroy(); }catch(e){} peer = null; conn = null; connected = false; }
+    const code = genCode();
+    const id = 'stick-' + code;
+    roomCodeEl.textContent = code;
+    setStatus('creating peer...');
+    peer = new Peer(id, { debug: 2 });
+
+    let opened = false;
+    peer.on('open', () => { opened = true; setStatus('waiting for opponent — share code'); });
+    peer.on('error', (err) => { console.error('peer err', err); setStatus('Peer error: '+(err && err.type?err.type:err)); createBtn.disabled = false; });
+
+    peer.on('connection', c => {
+      if(conn){ try{ c.close(); }catch(e){} return; }
+      conn = c;
+      attachConnListeners();
+    });
+
+    // safety timeout
+    setTimeout(()=>{ if(!opened){ setStatus('Peer open timeout; check network'); createBtn.disabled = false; } }, 6000);
+    isHost = true;
+  } catch(e){
+    console.error(e);
+    setStatus('Create failed: ' + (e && e.message ? e.message : e));
+    createBtn.disabled = false;
+  }
+});
+
+// Join game
+joinBtn.addEventListener('click', () => {
+  const code = (joinInput.value||'').trim();
+  if(!/^\d{4}$/.test(code)){ alert('Enter a 4-digit code'); return; }
+  joinBtn.disabled = true;
+  (async () => {
+    try {
+      if(peer){ try{ peer.destroy(); }catch(e){} peer = null; conn = null; connected = false; }
+      setStatus('creating local peer...');
+      peer = new Peer(null, { debug: 2 });
+      peer.on('error', e => { console.warn('peer err', e); setStatus('Peer error'); joinBtn.disabled = false; });
+
+      peer.on('open', () => {
+        setStatus('connecting to ' + code + ' ...');
+        const target = 'stick-' + code;
+        const c = peer.connect(target, { reliable: true });
+        // timeout
+        const t = setTimeout(()=>{ if(!c.open){ setStatus('Connection timeout'); joinBtn.disabled = false; try{ c.close(); }catch(e){} } }, 7000);
+
+        c.on('open', ()=>{ clearTimeout(t); conn = c; attachConnListeners(); joinBtn.disabled = false; setStatus('connected'); });
+        c.on('error', err=>{ console.warn(err); setStatus('Conn error'); joinBtn.disabled = false; });
+      });
+    } catch(e){
+      console.error(e);
+      setStatus('Join failed: '+(e.message||e));
+      joinBtn.disabled = false;
+    }
+  })();
+});
+
+// attach connection handlers
+function attachConnListeners(){
+  if(!conn) return;
+  conn.on('data', d => handleMsg(d));
+  conn.on('open', ()=> { connected = true; setStatus('connected'); safeSend({t:'hello'}); onConnected(); });
+  conn.on('close', ()=> { connected=false; setStatus('closed'); });
+  conn.on('error', e=>{ console.warn(e); setStatus('conn error'); });
+}
+
+// safe send wrapper
+function safeSend(obj){
+  if(conn && conn.open){ try{ conn.send(obj); }catch(e){ console.warn('send err', e); } }
+}
+
+/* ---------- Simple messaging: inputs ---------- */
+function handleMsg(m){
+  if(!m || !m.t) return;
+  if(m.t === 'hello'){ setStatus('peer says hello'); }
+  else if(m.t === 'input'){ // remote input for the player index (m.i)
+    remoteInputs[m.i] = m.data;
+  }
+}
+
+/* ---------- Game: canvas, physics ---------- */
+const canvas = document.getElementById('game'), ctx = canvas.getContext('2d');
+const BASE_W = 1000, BASE_H = 560; let W = BASE_W, H = BASE_H;
+const groundY = H - 110, gravity = 1800;
+function resize(){ const dpr = Math.min(window.devicePixelRatio||1, 2); canvas.width = W*dpr; canvas.height = H*dpr; const displayW = Math.min(window.innerWidth-20,1100); canvas.style.width = displayW + 'px'; canvas.style.height = Math.round(displayW*(H/W)) + 'px'; ctx.setTransform(dpr,0,0,dpr,0,0); }
+window.addEventListener('resize', resize); resize();
+
+const players = [
+  { x:220,y:groundY,vx:0,vy:0,dir:1,hp:100,atkTimer:0,color: getComputedStyle(document.documentElement).getPropertyValue('--blue').trim() || '#4ea8ff' },
+  { x:780,y:groundY,vx:0,vy:0,dir:-1,hp:100,atkTimer:0,color: getComputedStyle(document.documentElement).getPropertyValue('--red').trim() || '#ff6b6b' }
+];
+
+// inputs
+let localInput = {left:false,right:false,jump:false,atk:false};
+const remoteInputs = [{left:false,right:false,jump:false,atk:false},{left:false,right:false,jump:false,atk:false}];
+
+// role buttons
+roleLeft.addEventListener('click', ()=>{ localPlayerIndex = 0; roleLeft.style.opacity=1; roleRight.style.opacity=0.6; document.getElementById('info').textContent='You control Player 1 (Blue)'; });
+roleRight.addEventListener('click', ()=>{ localPlayerIndex = 1; roleRight.style.opacity=1; roleLeft.style.opacity=0.6; document.getElementById('info').textContent='You control Player 2 (Red)'; });
+roleLeft.style.opacity=1; roleRight.style.opacity=0.6;
+let localPlayerIndex = 0;
+
+// touch pads visibility (each device shows only its own pad)
+if(isTouch){ document.getElementById('padRemote').style.visibility='hidden'; document.getElementById('padLocal').style.visibility='visible'; } else { document.getElementById('padLocal').style.visibility='hidden'; }
+
+// bind pad buttons (pointer events, multi-touch)
+document.querySelectorAll('.padBtn').forEach(btn=>{
+  const act = btn.dataset.act;
+  btn.addEventListener('pointerdown', e=>{ e.preventDefault(); btn.setPointerCapture(e.pointerId); padAction(act, true); });
+  btn.addEventListener('pointerup', e=>{ e.preventDefault(); padAction(act, false); });
+  btn.addEventListener('pointercancel', e=>{ padAction(act,false); });
+  btn.addEventListener('pointerleave', e=>{ padAction(act,false); });
+});
+function padAction(act, down){
+  if(act==='left'){ localInput.left = down; sendLocalInput(); }
+  if(act==='right'){ localInput.right = down; sendLocalInput(); }
+  if(act==='jump' && down){ localInput.jump = true; sendLocalInput(); setTimeout(()=>{ localInput.jump=false; sendLocalInput(); },120); }
+  if(act==='atk' && down){ localInput.atk = true; sendLocalInput(); setTimeout(()=>{ localInput.atk=false; sendLocalInput(); },120); }
+}
+
+// keyboard
+window.addEventListener('keydown', e=>{
+  if(e.key==='a'||e.key==='A'){ localInput.left=true; sendLocalInput(); }
+  if(e.key==='d'||e.key==='D'){ localInput.right=true; sendLocalInput(); }
+  if(e.key==='w'||e.key==='W'){ localInput.jump=true; sendLocalInput(); setTimeout(()=>{ localInput.jump=false; sendLocalInput(); },120); }
+  if(e.key==='f'||e.key==='F'){ localInput.atk=true; sendLocalInput(); setTimeout(()=>{ localInput.atk=false; sendLocalInput(); },120); }
+  if(e.key==='r'||e.key==='R'){ resetGame(); }
+});
+window.addEventListener('keyup', e=>{ if(e.key==='a'||e.key==='A'){ localInput.left=false; sendLocalInput(); } if(e.key==='d'||e.key==='D'){ localInput.right=false; sendLocalInput(); } });
+
+// send local input over connection
+function sendLocalInput(){ if(conn && conn.open){ try{ conn.send({ t:'input', i: localPlayerIndex, data: localInput }); }catch(e){ console.warn('send err', e); } } }
+// heartbeat
+setInterval(()=>{ sendLocalInput(); }, 140);
+
+// simple hit sound via WebAudio
+let audioCtx = null;
+function playHit(){
+  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'square'; o.frequency.value = 200;
+  g.gain.value = 0.0001;
+  o.connect(g); g.connect(audioCtx.destination);
+  const now = audioCtx.currentTime;
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(0.05, now + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+  o.start(now); o.stop(now + 0.14);
+}
+
+// particles
+const particles = [];
+function spawnParticles(x,y,col){
+  for(let i=0;i<8;i++) particles.push({x,y,vx:(Math.random()-0.5)*350,vy:(Math.random()-0.8)*300,life:0,ttl:0.45+Math.random()*0.2,col,r:2+Math.random()*3});
+}
+
+// simulate & render
+let last = performance.now();
+function loop(now){
+  const dt = Math.min((now - last)/1000, 0.033);
+  last = now;
+  simulate(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function simulate(dt){
+  const speed = 360;
+  for(let idx=0; idx<2; idx++){
+    const p = players[idx];
+    const ctrl = (idx === localPlayerIndex) ? localInput : remoteInputs[idx];
+    if(ctrl.left){ p.vx = -speed; p.dir = -1; }
+    else if(ctrl.right){ p.vx = speed; p.dir = 1; }
+    else { p.vx *= 0.78; if(Math.abs(p.vx) < 6) p.vx = 0; }
+
+    if(ctrl.jump && Math.abs(p.y - groundY) < 2){ p.vy = -880; }
+    p.vy += gravity * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    if(p.y > groundY){ p.y = groundY; p.vy = 0; }
+    p.x = Math.max(80, Math.min(W - 80, p.x));
+
+    if(ctrl.atk && p.atkTimer <= 0){
+      const other = players[idx ^ 1];
+      const reach = 74;
+      const dx = other.x - p.x;
+      if(Math.abs(dx) <= reach && Math.abs(other.y - p.y) < 70){
+        other.hp = Math.max(0, other.hp - 8);
+        spawnParticles(other.x, other.y - 12, p.color);
+        playHit();
+      }
+      p.atkTimer = 0.28;
+    }
+    if(p.atkTimer > 0) p.atkTimer = Math.max(0, p.atkTimer - dt);
+  }
+  // update HUD (local perspective)
+  document.getElementById('hpLocal').style.width = players[localPlayerIndex].hp + '%';
+  document.getElementById('hpRemote').style.width = players[localPlayerIndex^1].hp + '%';
+}
+
+function render(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#06070a'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#0c0c0e'; ctx.fillRect(0,groundY+50,W,H-(groundY+50));
+  if(players[0].x < players[1].x){ drawPlayer(players[0]); drawPlayer(players[1]); } else { drawPlayer(players[1]); drawPlayer(players[0]); }
+
+  // particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+    p.vy += gravity * 0.001 * (1/60);
+    p.x += p.vx * (1/60);
+    p.y += p.vy * (1/60);
+    p.life += 1/60;
+    const a = 1 - (p.life / p.ttl);
+    ctx.beginPath(); ctx.fillStyle = hexToRgba(p.col, a); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
+    if(p.life >= p.ttl) particles.splice(i,1);
+  }
+}
+
+function drawPlayer(p){
+  ctx.save(); ctx.translate(p.x,p.y);
+  ctx.beginPath(); ctx.fillStyle = hexToRgba(p.color, 0.06); ctx.ellipse(0,-8,48,20,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0,44,30,8,0,0,Math.PI*2); ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fill();
+  ctx.lineWidth = 4; ctx.strokeStyle = p.color; ctx.shadowBlur = 12; ctx.shadowColor = p.color;
+  ctx.beginPath(); ctx.arc(0,-28,12,0,Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,-16); ctx.lineTo(0,14); ctx.stroke();
+  const swing = p.atkTimer > 0 ? (1 - (p.atkTimer / 0.28)) * 28 : 0;
+  ctx.beginPath(); ctx.moveTo(0,-6); ctx.lineTo(-18,6); ctx.stroke();
+  ctx.beginPath(); const armX = (swing + 28) * p.dir; const armY = -6 - (p.atkTimer > 0 ? 8 : 0); ctx.moveTo(0,-6); ctx.lineTo(armX, armY); ctx.stroke();
+  if(p.atkTimer > 0){ ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.lineWidth = 3; ctx.strokeStyle = p.color; ctx.shadowBlur = 18; ctx.moveTo(armX, armY); ctx.lineTo(armX + 18 * p.dir, armY - 10); ctx.stroke(); ctx.globalAlpha = 1; }
+  ctx.beginPath(); ctx.moveTo(0,14); ctx.lineTo(-12,38); ctx.moveTo(0,14); ctx.lineTo(12,38); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function hexToRgba(hex, a){ const h = hex.replace('#',''); const r = parseInt(h.substring(0,2),16); const g = parseInt(h.substring(2,4),16); const b = parseInt(h.substring(4,6),16); return `rgba(${r},${g},${b},${a})`; }
+
+/* ---------- Connection callbacks ---------- */
+function onConnected(){ setStatus('connected'); try{ conn.send({t:'hello'}); }catch(e){} }
+
+/* ---------- Message sending (periodic) ---------- */
+// send local input periodically to keep remote in sync
+setInterval(()=>{ if(conn && conn.open) try{ conn.send({t:'input', i: localPlayerIndex, data: localInput}); }catch(e){} }, 150);
+
+/* ---------- Reset & lifecycle ---------- */
+restartBtn.addEventListener('click', resetGame);
+function resetGame(){ players[0].hp=100; players[1].hp=100; players[0].x=220; players[1].x=780; }
+
+// cleanup on close
+window.addEventListener('beforeunload', ()=>{ try{ if(conn) conn.close(); }catch(e){} try{ if(peer) peer.destroy(); }catch(e){} });
+
+/* ---------- Safe defaults & notes ---------- */
+setStatus('idle');
+/* End */
+</script>
+</body>
+</html>
