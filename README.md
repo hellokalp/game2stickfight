@@ -1,1 +1,1 @@
-# game2stickfight.html
+# game2stickfight
