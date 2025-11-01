@@ -2,24 +2,23 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Stick Fight — Dark Mode</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Stick Fight — Dark Theme</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      background: radial-gradient(circle at center, #000, #050505);
-      overflow: hidden;
+      background: radial-gradient(circle at center, #000, #020202);
       color: #0f0;
       font-family: monospace;
+      overflow: hidden;
       text-align: center;
-      height: 100vh;
     }
     canvas {
-      background: linear-gradient(180deg, #000 0%, #111 100%);
       display: block;
       margin: 0 auto;
+      background: linear-gradient(180deg, #000 0%, #111 100%);
     }
-    .controls {
+    .ui {
       margin-top: 10px;
     }
     button {
@@ -30,24 +29,35 @@
       padding: 8px 16px;
       font-size: 16px;
       margin: 5px;
-      transition: 0.2s;
     }
-    button:hover {
-      background: #0f0;
-      color: #000;
+    button:hover { background: #0f0; color: #000; }
+    #controls {
+      position: fixed;
+      bottom: 10px;
+      left: 0; right: 0;
+      display: flex;
+      justify-content: space-around;
+      flex-wrap: wrap;
+      z-index: 10;
     }
-    #gameCode {
-      font-size: 20px;
+    .btn {
+      background: #111;
+      border: 1px solid #0f0;
+      border-radius: 50%;
       color: #0f0;
-      margin-top: 10px;
+      width: 60px; height: 60px;
+      font-size: 22px;
+      display: flex; justify-content: center; align-items: center;
+      margin: 5px;
     }
+    #gameCode { margin-top: 10px; font-size: 18px; color: #0f0; }
   </style>
 </head>
 <body>
-  <h2>🕹️ Stick Fight — Dark Theme</h2>
+  <h2>⚔️ Stick Fight — Dark Theme</h2>
   <canvas id="gameCanvas" width="800" height="400"></canvas>
 
-  <div class="controls">
+  <div class="ui">
     <button id="createGame">Create Game</button>
     <button id="joinGame">Join Game</button>
     <input type="text" id="joinCode" placeholder="Enter 4-digit code" />
@@ -55,11 +65,22 @@
 
   <div id="gameCode"></div>
 
+  <!-- On-screen buttons -->
+  <div id="controls" style="display:none;">
+    <div>
+      <button class="btn" id="leftBtn">←</button>
+      <button class="btn" id="rightBtn">→</button>
+    </div>
+    <div>
+      <button class="btn" id="punchBtn">👊</button>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <script>
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
-    let peer, conn, playerId, playerColor;
+    let peer, conn, role;
 
     const player1 = { x: 150, y: 320, color: "#0f0", left: false, right: false, punch: false };
     const player2 = { x: 650, y: 320, color: "#f00", left: false, right: false, punch: false };
@@ -95,80 +116,75 @@
     }
     loop();
 
-    // Movement keys
-    document.addEventListener("keydown", e => {
-      if (playerId === "host") {
-        if (e.key === "a") player1.left = true;
-        if (e.key === "d") player1.right = true;
-        if (e.key === "w") player1.punch = true;
-      } else {
-        if (e.key === "j") player2.left = true;
-        if (e.key === "l") player2.right = true;
-        if (e.key === "i") player2.punch = true;
-      }
-    });
-
-    document.addEventListener("keyup", e => {
-      if (playerId === "host") {
-        if (e.key === "a") player1.left = false;
-        if (e.key === "d") player1.right = false;
-        if (e.key === "w") player1.punch = false;
-      } else {
-        if (e.key === "j") player2.left = false;
-        if (e.key === "l") player2.right = false;
-        if (e.key === "i") player2.punch = false;
-      }
-    });
-
-    // PeerJS setup
+    // ======== PEERJS CONNECTION ======== //
     document.getElementById("createGame").onclick = () => {
-      peer = new Peer({
-        host: "0.peerjs.com",
-        port: 443,
-        secure: true,
-        debug: 2
-      });
+      peer = new Peer({ host: "0.peerjs.com", port: 443, secure: true });
+      role = "host";
+      document.getElementById("controls").style.display = "flex";
 
       peer.on("open", id => {
-        playerId = "host";
         const code = id.slice(-4).toUpperCase();
         document.getElementById("gameCode").innerText = "Your Code: " + code;
       });
 
       peer.on("connection", c => {
         conn = c;
-        conn.on("data", d => {
-          Object.assign(player2, d);
-        });
+        conn.on("data", data => Object.assign(player2, data));
         alert("Player joined!");
       });
     };
 
     document.getElementById("joinGame").onclick = () => {
       const code = document.getElementById("joinCode").value.trim();
-      if (!code) return alert("Enter code");
-      peer = new Peer({
-        host: "0.peerjs.com",
-        port: 443,
-        secure: true,
-        debug: 2
-      });
+      if (!code) return alert("Enter 4-digit code");
+      peer = new Peer({ host: "0.peerjs.com", port: 443, secure: true });
+      role = "join";
+      document.getElementById("controls").style.display = "flex";
 
       peer.on("open", id => {
-        playerId = "join";
         conn = peer.connect(id.replace(/.{4}$/, code));
-        conn.on("open", () => {
-          alert("Connected to host!");
-        });
+        conn.on("open", () => alert("Connected to host!"));
+        conn.on("data", data => Object.assign(player1, data));
       });
     };
 
     setInterval(() => {
       if (conn && conn.open) {
-        if (playerId === "host") conn.send(player1);
+        if (role === "host") conn.send(player1);
         else conn.send(player2);
       }
     }, 50);
+
+    // ======== MOBILE BUTTONS ======== //
+    const btns = {
+      left: document.getElementById("leftBtn"),
+      right: document.getElementById("rightBtn"),
+      punch: document.getElementById("punchBtn")
+    };
+
+    function handleButton(btn, prop) {
+      btn.addEventListener("touchstart", e => {
+        e.preventDefault();
+        if (role === "host") player1[prop] = true;
+        else player2[prop] = true;
+      });
+      btn.addEventListener("touchend", e => {
+        e.preventDefault();
+        if (role === "host") player1[prop] = false;
+        else player2[prop] = false;
+      });
+    }
+
+    handleButton(btns.left, "left");
+    handleButton(btns.right, "right");
+    handleButton(btns.punch, "punch");
+
+    // ======== AUTO ROTATE TO LANDSCAPE ======== //
+    window.addEventListener("load", () => {
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock("landscape").catch(() => {});
+      }
+    });
   </script>
 </body>
 </html>
