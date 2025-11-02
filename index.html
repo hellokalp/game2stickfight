@@ -30,8 +30,8 @@
     justify-content: space-around;
   }
 
-  .controls.bottom { bottom: 10px; }
-  .controls.top { top: 10px; }
+  .controls.bottom { bottom: 15px; }
+  .controls.top { top: 15px; }
 
   .btn-group {
     display: flex;
@@ -98,14 +98,14 @@ const punchSound = document.getElementById("punchSound");
 class Fighter {
   constructor(x, color, keys) {
     this.x = x;
-    this.y = canvas.height - 150;
+    this.y = canvas.height / 2; // Start in center area
     this.width = 50;
     this.height = 100;
     this.color = color;
     this.dy = 0;
     this.speed = 6;
     this.keys = keys;
-    this.onGround = true;
+    this.onGround = false;
     this.hp = 100;
   }
 
@@ -154,8 +154,9 @@ class Fighter {
   }
 }
 
-const player1 = new Fighter(100, "cyan", {left: "a", right: "d", up: "w", attack: "s"});
-const player2 = new Fighter(canvas.width - 150, "orange", {left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp", attack: "ArrowDown"});
+const center = canvas.width / 2;
+const player1 = new Fighter(center - 150, "cyan", {left: "a", right: "d", up: "w", attack: "s"});
+const player2 = new Fighter(center + 100, "orange", {left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp", attack: "ArrowDown"});
 const keys = {};
 
 window.addEventListener("keydown", e => keys[e.key] = true);
@@ -184,9 +185,9 @@ function update() {
   player1.draw();
   player2.draw();
 
-  // HP bars - different positions for portrait
-  player1.showHP(20, canvas.height - 50);
-  player2.showHP(canvas.width - 220, 20);
+  // HP bars now moved away from buttons
+  player1.showHP(20, canvas.height - 90); // above bottom buttons
+  player2.showHP(canvas.width - 220, 60); // below top buttons
 
   if (player1.hp <= 0 || player2.hp <= 0) {
     ctx.fillStyle = "white";
