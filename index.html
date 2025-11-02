@@ -2,47 +2,40 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Stickman Fight</title>
 <style>
-  body {
+  html, body {
     margin: 0;
-    background: radial-gradient(circle at center, #111 0%, #000 100%);
+    padding: 0;
+    height: 100%;
     overflow: hidden;
-    height: 100vh;
+    background: radial-gradient(circle at center, #111 0%, #000 100%);
   }
 
   canvas {
     display: block;
-    margin: 0 auto;
+    width: 100%;
+    height: 100%;
     background: transparent;
   }
 
-  /* Mobile Controls Layout */
+  /* Touch controls */
   .controls {
     position: fixed;
-    width: 100%;
+    left: 0;
+    right: 0;
     display: none;
     z-index: 10;
+    justify-content: space-around;
   }
 
-  .controls.bottom {
-    bottom: 10px;
-    display: flex;
-    justify-content: space-between;
-    padding: 0 20px;
-  }
-
-  .controls.top {
-    top: 10px;
-    display: flex;
-    justify-content: space-between;
-    padding: 0 20px;
-  }
+  .controls.bottom { bottom: 10px; }
+  .controls.top { top: 10px; }
 
   .btn-group {
     display: flex;
-    gap: 10px;
+    gap: 8px;
   }
 
   .btn {
@@ -56,26 +49,30 @@
     text-align: center;
     line-height: 60px;
     user-select: none;
-    box-shadow: 0 0 10px rgba(255,255,255,0.2);
+    box-shadow: 0 0 10px rgba(255,255,255,0.3);
   }
 
   @media (max-width: 768px) {
-    .controls { display: flex; }
+    .controls { display: flex; flex-wrap: wrap; }
   }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 
-<!-- Player 1 Controls (Bottom Left) -->
+<!-- Player 1 controls (bottom) -->
 <div class="controls bottom" id="bottomControls">
-  <div class="btn-group" id="p1">
+  <div class="btn-group">
     <div class="btn" id="aBtn">A</div>
     <div class="btn" id="dBtn">D</div>
     <div class="btn" id="wBtn">W</div>
     <div class="btn" id="sBtn">S</div>
   </div>
-  <div class="btn-group" id="p2">
+</div>
+
+<!-- Player 2 controls (top) -->
+<div class="controls top" id="topControls">
+  <div class="btn-group">
     <div class="btn" id="leftBtn">←</div>
     <div class="btn" id="rightBtn">→</div>
     <div class="btn" id="upBtn">↑</div>
@@ -88,8 +85,13 @@
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
 
 const punchSound = document.getElementById("punchSound");
 
@@ -128,6 +130,7 @@ class Fighter {
       this.dy = 0;
       this.onGround = true;
     }
+    this.x = Math.max(0, Math.min(this.x, canvas.width - this.width));
   }
 
   attack(opponent) {
@@ -139,39 +142,35 @@ class Fighter {
     ) {
       punchSound.currentTime = 0;
       punchSound.play();
-      opponent.hp -= 1.5;
+      opponent.hp -= 1.2;
     }
   }
 
-  showHP(xPos) {
+  showHP(xPos, yPos) {
     ctx.fillStyle = "red";
-    ctx.fillRect(xPos, 30, 200, 20);
+    ctx.fillRect(xPos, yPos, 200, 20);
     ctx.fillStyle = "lime";
-    ctx.fillRect(xPos, 30, (this.hp / 100) * 200, 20);
+    ctx.fillRect(xPos, yPos, (this.hp / 100) * 200, 20);
   }
 }
 
-const player1 = new Fighter(200, "cyan", {left: "a", right: "d", up: "w", attack: "s"});
-const player2 = new Fighter(canvas.width - 250, "orange", {left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp", attack: "ArrowDown"});
+const player1 = new Fighter(100, "cyan", {left: "a", right: "d", up: "w", attack: "s"});
+const player2 = new Fighter(canvas.width - 150, "orange", {left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp", attack: "ArrowDown"});
 const keys = {};
 
 window.addEventListener("keydown", e => keys[e.key] = true);
 window.addEventListener("keyup", e => keys[e.key] = false);
 
-/* --- Mobile Buttons --- */
+/* --- Touch controls --- */
 function bindButton(id, keyName) {
   const btn = document.getElementById(id);
-  btn.addEventListener("touchstart", () => keys[keyName] = true);
-  btn.addEventListener("touchend", () => keys[keyName] = false);
+  btn.addEventListener("touchstart", e => { e.preventDefault(); keys[keyName] = true; });
+  btn.addEventListener("touchend", e => { e.preventDefault(); keys[keyName] = false; });
 }
-bindButton("aBtn", "a");
-bindButton("dBtn", "d");
-bindButton("wBtn", "w");
-bindButton("sBtn", "s");
-bindButton("leftBtn", "ArrowLeft");
-bindButton("rightBtn", "ArrowRight");
-bindButton("upBtn", "ArrowUp");
-bindButton("downBtn", "ArrowDown");
+["aBtn","dBtn","wBtn","sBtn","leftBtn","rightBtn","upBtn","downBtn"].forEach((id,i)=>{
+  const key = ["a","d","w","s","ArrowLeft","ArrowRight","ArrowUp","ArrowDown"][i];
+  bindButton(id,key);
+});
 
 function update() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -184,13 +183,15 @@ function update() {
 
   player1.draw();
   player2.draw();
-  player1.showHP(50);
-  player2.showHP(canvas.width - 250);
+
+  // HP bars - different positions for portrait
+  player1.showHP(20, canvas.height - 50);
+  player2.showHP(canvas.width - 220, 20);
 
   if (player1.hp <= 0 || player2.hp <= 0) {
     ctx.fillStyle = "white";
-    ctx.font = "50px Arial";
-    ctx.fillText(`${player1.hp <= 0 ? "Player 2" : "Player 1"} Wins!`, canvas.width / 2 - 150, canvas.height / 2);
+    ctx.font = "40px Arial";
+    ctx.fillText(`${player1.hp <= 0 ? "Player 2" : "Player 1"} Wins!`, canvas.width/2 - 150, canvas.height/2);
     return;
   }
 
