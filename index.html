@@ -96,16 +96,15 @@ resizeCanvas();
 const punchSound = document.getElementById("punchSound");
 
 class Fighter {
-  constructor(x, color, keys) {
+  constructor(x, y, color, keys) {
     this.x = x;
-    this.y = canvas.height / 2; // Start in center area
+    this.y = y;
     this.width = 50;
     this.height = 100;
     this.color = color;
     this.dy = 0;
     this.speed = 6;
     this.keys = keys;
-    this.onGround = false;
     this.hp = 100;
   }
 
@@ -116,21 +115,15 @@ class Fighter {
     ctx.fillRect(this.x + this.width/2 - 5, this.y + 20, 10, 5);
   }
 
-  move(left, right, jump) {
+  move(left, right, up, down) {
     if (left) this.x -= this.speed;
     if (right) this.x += this.speed;
-    if (jump && this.onGround) {
-      this.dy = -15;
-      this.onGround = false;
-    }
-    this.y += this.dy;
-    this.dy += 0.8;
-    if (this.y >= canvas.height - 150) {
-      this.y = canvas.height - 150;
-      this.dy = 0;
-      this.onGround = true;
-    }
+    if (up) this.y -= this.speed;
+    if (down) this.y += this.speed;
+
+    // Keep inside screen
     this.x = Math.max(0, Math.min(this.x, canvas.width - this.width));
+    this.y = Math.max(100, Math.min(this.y, canvas.height - this.height - 100));
   }
 
   attack(opponent) {
@@ -154,9 +147,12 @@ class Fighter {
   }
 }
 
-const center = canvas.width / 2;
-const player1 = new Fighter(center - 150, "cyan", {left: "a", right: "d", up: "w", attack: "s"});
-const player2 = new Fighter(center + 100, "orange", {left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp", attack: "ArrowDown"});
+// --- Center both stickmen ---
+const player1 = new Fighter(canvas.width/2 - 120, canvas.height/2 - 50, "cyan",
+  {left: "a", right: "d", up: "w", down: "s", attack: "s"});
+const player2 = new Fighter(canvas.width/2 + 70, canvas.height/2 - 50, "orange",
+  {left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp", down: "ArrowDown", attack: "ArrowDown"});
+
 const keys = {};
 
 window.addEventListener("keydown", e => keys[e.key] = true);
@@ -176,8 +172,8 @@ function bindButton(id, keyName) {
 function update() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  player1.move(keys[player1.keys.left], keys[player1.keys.right], keys[player1.keys.up]);
-  player2.move(keys[player2.keys.left], keys[player2.keys.right], keys[player2.keys.up]);
+  player1.move(keys[player1.keys.left], keys[player1.keys.right], keys[player1.keys.up], keys[player1.keys.down]);
+  player2.move(keys[player2.keys.left], keys[player2.keys.right], keys[player2.keys.up], keys[player2.keys.down]);
 
   if (keys[player1.keys.attack]) player1.attack(player2);
   if (keys[player2.keys.attack]) player2.attack(player1);
@@ -185,9 +181,9 @@ function update() {
   player1.draw();
   player2.draw();
 
-  // HP bars now moved away from buttons
-  player1.showHP(20, canvas.height - 90); // above bottom buttons
-  player2.showHP(canvas.width - 220, 60); // below top buttons
+  // HP bars positioned safely away from buttons
+  player1.showHP(20, canvas.height - 90);
+  player2.showHP(canvas.width - 220, 60);
 
   if (player1.hp <= 0 || player2.hp <= 0) {
     ctx.fillStyle = "white";
