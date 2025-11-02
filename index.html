@@ -5,22 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Stickman Fight</title>
   <style>
-    body {
+    html, body {
       margin: 0;
+      padding: 0;
+      background: #121212;
       overflow: hidden;
-      background: #222;
+      font-family: sans-serif;
     }
     canvas {
       display: block;
-      background: #333;
+      background: #1e1e1e;
     }
-    #controls {
+    #mobileControls {
+      display: none;
       position: absolute;
       bottom: 10px;
       width: 100%;
-      display: flex;
       justify-content: space-between;
       padding: 0 10px;
+      z-index: 10;
     }
     .btn-group {
       display: flex;
@@ -28,27 +31,36 @@
       gap: 5px;
     }
     button {
-      padding: 10px;
-      font-size: 14px;
+      padding: 12px;
+      font-size: 16px;
       border: none;
-      border-radius: 5px;
+      border-radius: 6px;
+      background: #333;
+      color: #fff;
+      opacity: 0.8;
+    }
+    button:active {
       background: #555;
-      color: white;
+    }
+    @media (max-width: 768px) {
+      #mobileControls {
+        display: flex;
+      }
     }
   </style>
 </head>
 <body>
 <canvas id="gameCanvas"></canvas>
-<div id="controls">
+<div id="mobileControls">
   <div class="btn-group">
-    <button onclick="movePlayer1(-1)">←</button>
-    <button onclick="movePlayer1(1)">→</button>
-    <button onclick="punchPlayer1()">Punch</button>
+    <button ontouchstart="movePlayer1(-1)" ontouchend="stopPlayer1()">←</button>
+    <button ontouchstart="movePlayer1(1)" ontouchend="stopPlayer1()">→</button>
+    <button ontouchstart="punchPlayer1()">Punch</button>
   </div>
   <div class="btn-group">
-    <button onclick="movePlayer2(-1)">←</button>
-    <button onclick="movePlayer2(1)">→</button>
-    <button onclick="punchPlayer2()">Punch</button>
+    <button ontouchstart="movePlayer2(-1)" ontouchend="stopPlayer2()">←</button>
+    <button ontouchstart="movePlayer2(1)" ontouchend="stopPlayer2()">→</button>
+    <button ontouchstart="punchPlayer2()">Punch</button>
   </div>
 </div>
 
@@ -69,6 +81,7 @@
       this.height = 100;
       this.punching = false;
       this.health = 100;
+      this.dx = 0;
     }
 
     draw() {
@@ -82,52 +95,60 @@
       }
     }
 
-    punch(opponent) {
-      this.punching = true;
-      punchSound.play();
-      setTimeout(() => this.punching = false, 200);
-      if (Math.abs(this.x - opponent.x) < 50) {
-        opponent.health -= 10;
-      }
-    }
-
-    move(dir) {
-      this.x += dir * 10;
+    update() {
+      this.x += this.dx;
       this.x = Math.max(0, Math.min(canvas.width - this.width, this.x));
     }
+
+    punch(opponent) {
+      if (!this.punching) {
+        this.punching = true;
+        punchSound.currentTime = 0;
+        punchSound.play();
+        setTimeout(() => this.punching = false, 200);
+        if (Math.abs(this.x - opponent.x) < 50) {
+          opponent.health = Math.max(0, opponent.health - 10);
+        }
+      }
+    }
   }
 
-  const player1 = new Stickman(100, 'red');
-  const player2 = new Stickman(canvas.width - 130, 'blue');
+  const player1 = new Stickman(100, '#e53935');
+  const player2 = new Stickman(canvas.width - 130, '#1e88e5');
 
   function movePlayer1(dir) {
-    player1.move(dir);
+    player1.dx = dir * 5;
   }
-
   function movePlayer2(dir) {
-    player2.move(dir);
+    player2.dx = dir * 5;
   }
-
+  function stopPlayer1() {
+    player1.dx = 0;
+  }
+  function stopPlayer2() {
+    player2.dx = 0;
+  }
   function punchPlayer1() {
     player1.punch(player2);
   }
-
   function punchPlayer2() {
     player2.punch(player1);
   }
 
   function drawHealthBars() {
-    ctx.fillStyle = 'white';
+    ctx.fillStyle = '#444';
     ctx.fillRect(20, 20, 200, 20);
     ctx.fillRect(canvas.width - 220, 20, 200, 20);
-    ctx.fillStyle = 'red';
+    ctx.fillStyle = '#e53935';
     ctx.fillRect(20, 20, player1.health * 2, 20);
-    ctx.fillStyle = 'blue';
+    ctx.fillStyle = '#1e88e5';
     ctx.fillRect(canvas.width - 220, 20, player2.health * 2, 20);
   }
 
   function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    player1.update();
+    player2.update();
     player1.draw();
     player2.draw();
     drawHealthBars();
@@ -135,6 +156,23 @@
   }
 
   animate();
+
+  // Keyboard controls
+  document.addEventListener('keydown', (e) => {
+    switch (e.key.toLowerCase()) {
+      case 'a': movePlayer1(-1); break;
+      case 'd': movePlayer1(1); break;
+      case 'w': punchPlayer1(); break;
+      case 'arrowleft': movePlayer2(-1); break;
+      case 'arrowright': movePlayer2(1); break;
+      case 'arrowup': punchPlayer2(); break;
+    }
+  });
+
+  document.addEventListener('keyup', (e) => {
+    if (['a', 'd'].includes(e.key.toLowerCase())) stopPlayer1();
+    if (['arrowleft', 'arrowright'].includes(e.key.toLowerCase())) stopPlayer2();
+  });
 </script>
 </body>
 </html>
